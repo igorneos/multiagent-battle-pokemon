@@ -1,0 +1,5 @@
+smolagents>=0.1.0
+google-generativeai>=0.3.0
+mcp>=1.0.0
+httpx>=0.24.0
+sseclient-py>=1.7.0
