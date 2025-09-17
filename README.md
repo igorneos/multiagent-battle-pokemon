@@ -2,6 +2,8 @@
 
 Un sistema multi-agente avanzado que utiliza **smolagents** y **Google Gemini** para simular batallas Pokémon basadas en efectividad de tipos, consultando datos reales a través de un servidor **Model Context Protocol (MCP)**.
 
+![PokeArenAI Main Picture](main_picture.png)
+
 ## 🏗️ Arquitectura del Sistema
 
 ```mermaid
