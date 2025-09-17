@@ -107,7 +107,7 @@ async def create_scout_agent(side: str, pokemon_name: str) -> ToolCallingAgent:
     # Initialize Gemini model
     model = LiteLLMModel(
         model_id="gemini/gemini-2.0-flash-exp",
-        api_key=os.getenv("GEMINI_API_KEY", "AIzaSyALmQ9eqDaiiaj0YOCmHbVDvc6QdFUnUJY")
+        api_key=os.getenv("GEMINI_API_KEY", "YOURAPIKEY")
     )
     
     # Create agent with MCP tool
@@ -125,7 +125,7 @@ async def create_referee_agent() -> CodeAgent:
     # Initialize Gemini model
     model = LiteLLMModel(
         model_id="gemini/gemini-2.0-flash-exp",
-        api_key=os.getenv("GEMINI_API_KEY", "AIzaSyALmQ9eqDaiiaj0YOCmHbVDvc6QdFUnUJY")
+        api_key=os.getenv("GEMINI_API_KEY", "YOURAPIKEY")
     )
     
     # Create code agent for calculations
