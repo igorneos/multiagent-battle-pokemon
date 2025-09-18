@@ -1,4 +1,55 @@
-# PokeArenAI (Hackathon edition) — Multi-Agent Prompt
+# PokeArenAI — Multi-Agent Prompt (Legacy Documentation)
+
+> **Nota**: Este archivo contiene la documentación original del desarrollo del sistema. 
+> Para la documentación actualizada, ver [README.md](README.md).
+
+## Mission ✅ COMPLETADO
+
+Decide the winner between two trainer-supplied Pokémon by consulting the **pokemon-mcp-server** and applying a compact **type-advantage wheel**. Keep logs playful; keep the build functional and efficient.
+
+## Tech Stack ✅ IMPLEMENTADO
+
+* **Language:** Python 3.12+
+* **Framework:** `smolagents` with `litellm` integration
+* **LLM:** Google Gemini — model **`gemini-2.0-flash-exp`** (read API key from `GEMINI_API_KEY`)
+* **MCP:** `pokemon-mcp-server` by indroneelray (https://github.com/indroneelray/pokemon-mcp-server)
+* **Data Source:** PokéAPI via MCP server
+
+## Operational Rules ✅ CUMPLIDAS
+
+* ✅ **Multi-agent parallel execution**: Scout-Left y Scout-Right trabajan simultáneamente
+* ✅ **Dynamic tool discovery**: Sistema MCP descubre herramientas automáticamente
+* ✅ **Natural language queries**: LLM genera consultas como "What is this pikachu? Show name, types, and base stats."
+* ✅ **No hardcoded data**: Todo viene del servidor MCP y PokéAPI
+* ✅ **Graceful error handling**: Manejo robusto de errores de red y API
+* ✅ **ReAct loop**: Reason → Action → Observation → Result implementado en agentes
+
+## Sistema MCP ✅ FUNCIONAL
+
+### Herramientas Descubiertas Automáticamente:
+1. `get-pokemon` - Principal para obtener datos de Pokémon ⭐
+2. `get-type` - Información sobre tipos de Pokémon
+3. `search-pokemon` - Búsqueda con paginación
+4. `get-move` - Detalles sobre movimientos
+5. `get-ability` - Información sobre habilidades
+
+### Flujo MCP Implementado:
+```
+LLM Request → Tool Discovery → Tool Selection → Natural Query Generation → MCP Call → PokéAPI → Response Formatting
+```
+
+## Type Effectiveness System ✅ COMPLETO
+
+Sistema completo de efectividad de tipos implementado con:
+- Super-efectivo (2.0×)
+- No muy efectivo (0.5×) 
+- Inmunidad (0.0×)
+- Soporte para tipos duales
+- Multiplicación de efectividades
+
+## Estado del Proyecto
+
+**🎯 COMPLETADO**: Sistema multi-agente funcional con integración MCP realhon edition) — Multi-Agent Prompt
 
 ## Mission
 

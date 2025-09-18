@@ -1,5 +1,15 @@
-smolagents>=0.1.0
-google-generativeai>=0.3.0
-mcp>=1.0.0
-httpx>=0.24.0
-sseclient-py>=1.7.0
+# PokeArenAI - Multi-Agent Pokemon Battle System
+# Dependencias principales
+
+# Framework multi-agente y LLM
+smolagents[litellm]>=1.21.3
+litellm>=1.0.0
+
+# API de Google Gemini
+google-generativeai>=0.8.0
+
+# Comunicación HTTP para MCP y PokéAPI
+httpx>=0.27.0
+
+# Utilidades de desarrollo y testing
+pytest>=7.0.0

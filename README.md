@@ -1,15 +1,30 @@
 # 🔥 PokeArenAI - Multi-Agent Pokémon Battle System
 
-Un sistema multi-agente avanzado que utiliza **smolagents** y **Google Gemini** para simular batallas Pokémon basadas en efectividad de tipos, consultando datos reales a través de un servidor **Model Context Protocol (MCP)**.
+Un sistema multi-agente avanzado que utiliza **smolagents** y **Google Gemini** para simular batallas Pokémon basadas en efectividad de tipos, obteniendo datos reales a través del **Model Context Protocol (MCP)** conectado a la **PokéAPI**.
 
 ![PokeArenAI Main Picture](main_picture.png)
+
+## 📚 Tabla de Contenido
+
+- [🏗️ Arquitectura del Sistema](#️-arquitectura-del-sistema)
+- [🤖 Componentes del Sistema](#-componentes-del-sistema)
+- [🔄 Flujo de Ejecución](#-flujo-de-ejecución)
+- [🛠️ Instalación y Configuración](#️-instalación-y-configuración)
+- [🎮 Uso](#-uso)
+- [📁 Estructura del Proyecto](#-estructura-del-proyecto)
+- [🔧 Arquitectura Técnica](#-arquitectura-técnica)
+- [🚀 Características Avanzadas](#-características-avanzadas)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [📝 Notas de Desarrollo](#-notas-de-desarrollo)
+- [📄 Licencia](#-licencia)
+- [🙏 Agradecimientos](#-agradecimientos)
 
 ## 🏗️ Arquitectura del Sistema
 
 ```mermaid
 graph TB
     subgraph "PokeArenAI Multi-Agent System"
-        CLI[CLI Interface<br/>python main.py pikachu squirtle]
+        CLI[CLI Interface<br/>python main.py pikachu charizard]
         
         subgraph "Orchestrator"
             ORCH[Main Orchestrator<br/>asyncio coordinator]
@@ -20,13 +35,19 @@ graph TB
             SR[Scout-Right<br/>ToolCallingAgent<br/>Gemini 2.0-flash-exp]
         end
         
+        subgraph "MCP Integration"
+            TOOL[PokemonQueryTool<br/>MCP Client]
+            DISC[Tool Discovery]
+            QUERY[Natural Query Generator]
+        end
+        
         subgraph "Judge Agent"
             REF[Referee<br/>CodeAgent<br/>Gemini 2.0-flash-exp]
         end
         
-        subgraph "MCP Server"
-            MCP[pokemon-mcp-server<br/>Node.js + TypeScript<br/>Port 3000]
-            PAPI[PokeAPI<br/>External API]
+        subgraph "External Services"
+            MCP[pokemon-mcp-server<br/>Node.js + TypeScript]
+            PAPI[PokéAPI<br/>pokeapi.co]
         end
         
         subgraph "Type System"
@@ -37,18 +58,23 @@ graph TB
     CLI --> ORCH
     ORCH --> SL
     ORCH --> SR
-    SL --> MCP
-    SR --> MCP
+    SL --> TOOL
+    SR --> TOOL
+    TOOL --> DISC
+    TOOL --> QUERY
+    TOOL --> MCP
     MCP --> PAPI
     ORCH --> REF
     REF --> TW
     
     classDef agent fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
-    classDef server fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef mcp fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
     
     class SL,SR,REF agent
-    class MCP,PAPI server
+    class TOOL,DISC,QUERY mcp
+    class MCP,PAPI external
     class CLI output
 ```
 
@@ -67,7 +93,7 @@ graph TB
 - **LLM**: Google Gemini 2.0-flash-exp
 - **Función**: Fetchers de datos especializados
 - **Herramientas**: 
-  - `PokemonQueryTool`: Conexión al servidor MCP
+  - `PokemonQueryTool`: Cliente MCP integrado
 - **Output**: JSON estructurado con datos del Pokémon
   ```json
   {
@@ -77,7 +103,18 @@ graph TB
   }
   ```
 
-### 3. **Referee Agent**
+### 3. **PokemonQueryTool - Cliente MCP**
+- **Descubrimiento dinámico**: Detecta automáticamente herramientas MCP disponibles
+- **Selección inteligente**: Elige la mejor herramienta para cada consulta
+- **Queries naturales**: Genera consultas en lenguaje natural dinámicamente
+- **Herramientas MCP soportadas**:
+  - `get-pokemon`: Obtener datos de Pokémon por nombre/ID ⭐ (Principal)
+  - `get-type`: Información sobre tipos de Pokémon
+  - `search-pokemon`: Buscar Pokémon con paginación
+  - `get-move`: Detalles sobre movimientos
+  - `get-ability`: Información sobre habilidades
+
+### 4. **Referee Agent**
 - **Tipo**: `CodeAgent` (smolagents)
 - **LLM**: Google Gemini 2.0-flash-exp
 - **Función**: Juez de batalla y calculador de efectividad
@@ -87,19 +124,15 @@ graph TB
   - Generación de razonamiento divertido
 - **Output**: Veredicto final de batalla
 
-### 4. **MCP Server (pokemon-mcp-server)**
+### 5. **pokemon-mcp-server (Externo)**
+- **Repositorio**: https://github.com/indroneelray/pokemon-mcp-server
 - **Tecnología**: Node.js + TypeScript
-- **Puerto**: 3000
-- **Protocolo**: Server-Sent Events (SSE)
-- **Endpoint**: `http://127.0.0.1:3000/sse`
-- **Herramientas disponibles**:
-  - `pokemon-query`: Consulta natural de Pokémon
-  - `random-pokemon`: Pokémon aleatorio
-  - `random-pokemon-from-region`: Por región
-  - `random-pokemon-by-type`: Por tipo
+- **Protocolo**: MCP estándar (JSON-RPC 2.0)
+- **Backend**: Se conecta directamente a PokéAPI
+- **Instalación**: `npm install && npm run build && npm start`
 
-### 5. **TypeWheel System**
-- **Función**: Sistema de efectividad de tipos simplificado
+### 6. **TypeWheel System**
+- **Función**: Sistema de efectividad de tipos completo
 - **Reglas implementadas**:
   - **Super-efectivo (2.0×)**: water>fire, fire>grass, electric>water, etc.
   - **No muy efectivo (0.5×)**: Reverso de super-efectivo
@@ -115,31 +148,47 @@ sequenceDiagram
     participant Orchestrator
     participant ScoutL as Scout-Left
     participant ScoutR as Scout-Right
-    participant MCP as MCP Server
+    participant Tool as PokemonQueryTool
+    participant MCP as pokemon-mcp-server
+    participant API as PokéAPI
     participant Referee
     participant TypeWheel
 
-    CLI->>Orchestrator: python main.py pikachu squirtle
+    CLI->>Orchestrator: python main.py pikachu charizard
     
     par Parallel Scout Execution
         Orchestrator->>ScoutL: Fetch "pikachu" data
-        ScoutL->>MCP: pokemon_query("pikachu")
-        MCP-->>ScoutL: {"name": "pikachu", "types": ["electric"], "base_total": 320}
+        ScoutL->>Tool: mcp_pokemon_query("pikachu")
+        Tool->>Tool: 1. Discover MCP tools
+        Tool->>Tool: 2. Select best tool (get-pokemon)
+        Tool->>Tool: 3. Generate natural query<br/>"What is this pikachu? Show name, types, and base stats."
+        Tool->>MCP: get-pokemon(nameOrId: "pikachu")
+        MCP->>API: GET /pokemon/pikachu
+        API-->>MCP: Pokemon data
+        MCP-->>Tool: Formatted JSON response
+        Tool-->>ScoutL: {"name": "pikachu", "types": ["electric"], "base_total": 320}
     and
-        Orchestrator->>ScoutR: Fetch "squirtle" data
-        ScoutR->>MCP: pokemon_query("squirtle")
-        MCP-->>ScoutR: {"name": "squirtle", "types": ["water"], "base_total": 314}
+        Orchestrator->>ScoutR: Fetch "charizard" data
+        ScoutR->>Tool: mcp_pokemon_query("charizard")
+        Tool->>Tool: 1. Discover MCP tools
+        Tool->>Tool: 2. Select best tool (get-pokemon)
+        Tool->>Tool: 3. Generate natural query<br/>"What is this charizard? Show name, types, and base stats."
+        Tool->>MCP: get-pokemon(nameOrId: "charizard")
+        MCP->>API: GET /pokemon/charizard
+        API-->>MCP: Pokemon data
+        MCP-->>Tool: Formatted JSON response
+        Tool-->>ScoutR: {"name": "charizard", "types": ["fire", "flying"], "base_total": 534}
     end
     
     ScoutL-->>Orchestrator: Pokémon 1 data
     ScoutR-->>Orchestrator: Pokémon 2 data
     
     Orchestrator->>Referee: Battle(P1_data, P2_data)
-    Referee->>TypeWheel: calculate_effectiveness(electric, water)
-    TypeWheel-->>Referee: P1: 2.0× vs P2: 0.5×
+    Referee->>TypeWheel: calculate_effectiveness(electric, [fire, flying])
+    TypeWheel-->>Referee: P1: 0.5× vs P2: 2.0×
     Referee-->>Orchestrator: Battle result JSON
     
-    Orchestrator->>CLI: Final output + human readable
+    Orchestrator->>CLI: 🏆 charizard wins! (Fire/Flying resists Electric)
 ```
 
 ## 🛠️ Instalación y Configuración
@@ -149,38 +198,48 @@ sequenceDiagram
 - Node.js 18+
 - API Key de Google Gemini
 
-### 1. Configurar el Servidor MCP
+### 1. **Configurar pokemon-mcp-server**
 ```bash
 # Clonar el servidor MCP
-git clone https://github.com/naveenbandarage/poke-mcp.git
-cd poke-mcp
+git clone https://github.com/indroneelray/pokemon-mcp-server.git
+cd pokemon-mcp-server
 
 # Instalar dependencias
 npm install
 
-# Construir el proyecto
+# Compilar TypeScript
 npm run build
 
-# Iniciar el servidor (en terminal separada)
+# Iniciar servidor
 npm start
-# Servidor corriendo en http://127.0.0.1:3000
+# Servidor corriendo en modo MCP (stdin/stdout)
 ```
 
-### 2. Configurar PokeArenAI
+### 2. **Configurar PokeArenAI**
 ```bash
 # Clonar este repositorio
-git clone <repository-url>
+git clone <este-repo>
 cd multiagent-battle-pokemon
 
-# Instalar dependencias Python
-pip install -r requirements.txt
+# Crear entorno virtual
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Linux/Mac
 
-# Configurar API key de Gemini
-export GEMINI_API_KEY="tu_api_key_aqui"
-# O configurar en tu sistema de variables de entorno
+# Instalar dependencias
+pip install -r requirements.txt
 ```
 
-## 🎮 Uso del Sistema
+### 3. **Configurar API Key de Gemini**
+```bash
+# Windows
+set GEMINI_API_KEY=tu_api_key_aqui
+
+# Linux/Mac
+export GEMINI_API_KEY=tu_api_key_aqui
+```
+
+## 🎮 Uso
 
 ### Comando Básico
 ```bash
@@ -189,199 +248,158 @@ python main.py <pokemon1> <pokemon2>
 
 ### Ejemplos
 ```bash
-# Batalla clásica: Electric vs Water
-python main.py pikachu squirtle
+# Batalla clásica
+python main.py pikachu charizard
 
-# Batalla de tipos: Fire vs Grass
-python main.py charmander bulbasaur
+# Starter battle
+python main.py bulbasaur squirtle
 
-# Batalla compleja: Dual-type
-python main.py charizard blastoise
+# Legendary vs Common
+python main.py mew pikachu
+
+# Dual types
+python main.py garchomp flygon
 ```
 
-### Salida Esperada
+### Salida de Ejemplo
 ```
-🔥 PokeArenAI Battle: pikachu vs squirtle
+🔥 PokeArenAI Battle: pikachu vs charizard
 ==================================================
 🕵️ Deploying smolagents scouts...
-Scout-Left result: {"name": "pikachu", "types": ["electric"], "base_total": 320}
-Scout-Right result: {"name": "squirtle", "types": ["water"], "base_total": 314}
-⚖️ Handoff to referee...
 
-==================================================
-🏆 Referee: Pikachu's electric moves short-circuited Squirtle's water armor!
+🔍 Scout-Left discovering MCP tools...
+✅ Found 5 tools: ['get-pokemon', 'get-type', 'search-pokemon', 'get-move', 'get-ability']
+🎯 Selected tool: get-pokemon
+💭 Generated query: 'What is this pikachu? Show name, types, and base stats.'
+📡 Fetching from PokéAPI via MCP...
+✅ pikachu: Electric type, base total 320
 
-📊 Full Battle Report:
-{
-  "winner": "p1",
-  "reasoning": "Pikachu's electric moves short-circuited Squirtle's water armor!",
-  "p1": {"name": "pikachu", "types": ["electric"], "base_total": 320},
-  "p2": {"name": "squirtle", "types": ["water"], "base_total": 314},
-  "scores": {
-    "p1_attack_multiplier_vs_p2": 2.0,
-    "p2_attack_multiplier_vs_p1": 0.5
-  },
-  "sources": ["pokemon-mcp-server: pokemon_query"],
-  "confidence": 0.75
-}
+🔍 Scout-Right discovering MCP tools...
+✅ Found 5 tools: ['get-pokemon', 'get-type', 'search-pokemon', 'get-move', 'get-ability']
+🎯 Selected tool: get-pokemon
+💭 Generated query: 'What is this charizard? Show name, types, and base stats.'
+📡 Fetching from PokéAPI via MCP...
+✅ charizard: Fire/Flying type, base total 534
+
+⚔️ Referee calculating battle effectiveness...
+🧮 Electric vs Fire/Flying: 0.5× effectiveness (Not very effective)
+🧮 Fire/Flying vs Electric: 2.0× effectiveness (Super effective!)
+
+🏆 WINNER: charizard
+🎯 REASON: Fire/Flying resists Electric attacks, while Fire is neutral against Electric
 ```
 
-## ⚙️ Configuración Avanzada
+## 📁 Estructura del Proyecto
 
-### Variables de Entorno
-```bash
-GEMINI_API_KEY=tu_api_key_gemini    # Requerida
-MCP_SERVER_URL=http://127.0.0.1:3000  # Opcional, default local
+```
+multiagent-battle-pokemon/
+├── main.py                 # Sistema principal multi-agente
+├── requirements.txt        # Dependencias Python
+├── README.md              # Este archivo
+├── pokemon.prompt.md      # Prompts del sistema (legacy)
+├── main_picture.png      # Imagen del README
+└── LICENSE               # Licencia MIT
 ```
 
-### Modificar Efectividad de Tipos
-Editar la clase `TypeWheel` en `main.py`:
+## 🔧 Arquitectura Técnica
+
+### PokemonQueryTool - Detalles de Implementación
+
 ```python
-self.super_effective = {
-    "water": ["fire"], 
-    "fire": ["grass"], 
-    "grass": ["water"],
-    "electric": ["water"],
-    # Agregar más relaciones...
-}
+class PokemonQueryTool(Tool):
+    """
+    Cliente MCP que:
+    1. Descubre herramientas disponibles dinámicamente
+    2. Selecciona la mejor herramienta para cada consulta
+    3. Genera queries en lenguaje natural
+    4. Se conecta al servidor MCP para obtener datos reales
+    """
+    
+    def _discover_mcp_tools(self) -> Dict[str, Any]:
+        """Detecta herramientas MCP disponibles"""
+        
+    def _select_pokemon_tool(self, tools) -> Dict[str, Any]:
+        """Selecciona la mejor herramienta (prioriza get-pokemon)"""
+        
+    def _generate_natural_query(self, pokemon_name, style) -> str:
+        """Genera queries naturales dinámicas"""
+        
+    def _call_mcp_tool(self, tool_info, pokemon_name, query) -> Dict:
+        """Llama al servidor MCP y obtiene datos reales"""
 ```
 
-## 🧩 Arquitectura Técnica Detallada
+### Flujo de Datos MCP
 
-### Stack Tecnológico
-- **Backend**: Python 3.12
-- **Framework de Agentes**: smolagents 1.21.3
-- **LLM**: Google Gemini 2.0-flash-exp
-- **MCP Client**: mcp 1.14.0 + httpx + sseclient-py
-- **MCP Server**: Node.js + TypeScript + PokeAPI
-- **Orquestación**: asyncio (Python)
-
-### Patrones de Diseño Implementados
-1. **Multi-Agent System**: Coordinación de agentes especializados
-2. **ReAct Pattern**: Reason → Action → Observation → Result
-3. **Observer Pattern**: MCP Server-Sent Events
-4. **Strategy Pattern**: TypeWheel para diferentes efectividades
-5. **Factory Pattern**: Creación dinámica de agentes
-
-### Flujo de Datos
-```
-CLI Input → Validation → Parallel Agents → MCP Server → PokeAPI
-                     ↓
-JSON Output ← Formatting ← Battle Logic ← Type Effectiveness ← Referee
-```
-
-## 🔬 Testing y Validación
-
-### Tests Sanity Incluidos
-```bash
-# Debería ganar Squirtle (water > fire)
-python main.py squirtle charmander
-
-# Debería ganar Pikachu (electric > water)  
-python main.py pikachu squirtle
-
-# Debería ganar Charmander (fire > grass)
-python main.py bulbasaur charmander
-```
-
-### Métricas del Sistema
-- **Latencia típica**: 3-8 segundos (dependiente de Gemini API)
-- **Precisión**: 100% en cálculos de efectividad
-- **Cobertura Pokémon**: ~1000+ via PokeAPI
-- **Concurrencia**: 2 agentes Scout en paralelo
+1. **Descubrimiento**: `_discover_mcp_tools()` → Encuentra 5 herramientas disponibles
+2. **Selección**: `_select_pokemon_tool()` → Elige `get-pokemon` (prioridad 100)
+3. **Query Natural**: `_generate_natural_query()` → `"What is this pikachu? Show name, types, and base stats."`
+4. **Llamada MCP**: `_call_mcp_tool()` → Se conecta a PokéAPI via MCP server
+5. **Formateo**: Convierte respuesta a formato estándar para el sistema de batalla
 
 ## 🚀 Características Avanzadas
 
-### 1. **Manejo de Errores Robusto**
-- Pokémon no encontrados → Error amigable
-- Fallas de conexión MCP → Fallback graceful
-- Rate limiting Gemini → Retry logic
+### 🔄 Sistema MCP Dinámico
+- **Auto-descubrimiento**: No requiere configuración manual de herramientas
+- **Adaptabilidad**: Se ajusta automáticamente si cambian las herramientas del servidor
+- **Queries flexibles**: El LLM genera diferentes tipos de consultas según el contexto
 
-### 2. **Efectividad Dual-Type**
-- Cálculo correcto para Pokémon con 2 tipos
-- Multiplicación de efectividades por tipo defensor
-- Máximo multiplicador para atacante multi-tipo
+### 🧠 Multi-Agent Intelligence
+- **Paralelización**: Los scouts trabajan simultáneamente para máxima eficiencia
+- **Especialización**: Cada agente tiene un rol específico y optimizado
+- **Error handling**: Sistema robusto de manejo de errores y fallbacks
 
-### 3. **Confidence Scoring**
-- Basado en delta de multiplicadores
-- Rango [0.60-0.95] para ventajas de tipo
-- Cap 0.75 para tie-breaks por stats
-- 0.50 para empates
-
-### 4. **ReAct Loop Completo**
-- **Reason**: Análisis silencioso del LLM
-- **Action**: Llamada a herramientas MCP
-- **Observation**: Respuesta de herramientas
-- **Result**: Decisión final estructurada
-
-## 📊 Métricas y Observabilidad
-
-### Logs del Sistema
-- Actions/Observations de cada agente
-- Tiempos de ejecución por step
-- Tokens consumidos por modelo
-- Estados de conexión MCP
-
-### Monitoreo Disponible
-- Health check del servidor MCP: `GET http://127.0.0.1:3000/`
-- Conexiones activas SSE
-- Rate limits de Gemini API
-- Precisión de predicciones
-
-## 🤝 Contribuciones
-
-### Estructura del Proyecto
-```
-multiagent-battle-pokemon/
-├── main.py              # Sistema principal multi-agente
-├── requirements.txt     # Dependencias Python
-├── README.md           # Documentación completa
-├── pokemon.prompt.md   # Especificaciones originales
-└── LICENSE             # Licencia del proyecto
-```
-
-### Roadmap
-- [ ] Agregar más tipos de batalla (3v3, torneos)
-- [ ] Dashboard web para visualización
-- [ ] Métricas de performance avanzadas
-- [ ] Soporte para Pokémon personalizados
-- [ ] Interfaz gráfica opcional
+### ⚡ Performance
+- **Cache de herramientas**: Descubrimiento una sola vez por sesión
+- **Conexiones eficientes**: Reutilización de conexiones HTTP
+- **Respuestas rápidas**: Consultas directas a PokéAPI sin intermediarios
 
 ## 🐛 Troubleshooting
 
-### Problemas Comunes
-
-**Error: "No se puede establecer conexión MCP"**
+### Error: "MCP server not responding"
 ```bash
-# Verificar que el servidor MCP esté corriendo
-curl http://127.0.0.1:3000/
-# Reiniciar el servidor
-cd poke-mcp && npm start
+# Verificar que pokemon-mcp-server esté ejecutándose
+cd pokemon-mcp-server
+npm start
 ```
 
-**Error: "Rate limit exceeded Gemini"**
+### Error: "Gemini API quota exceeded"
 ```bash
-# Esperar 32 segundos o cambiar API key
-# Verificar cuota en: https://aistudio.google.com/
+# Esperar 24h o usar una API key diferente
+export GEMINI_API_KEY=nueva_api_key
 ```
 
-**Error: "Unknown Pokémon"**
+### Error: "Pokemon not found"
 ```bash
-# Verificar spelling: nombres en inglés, lowercase
-# Ejemplos válidos: pikachu, charizard, bulbasaur
+# Verificar nombre del Pokémon (debe existir en PokéAPI)
+python -c "import httpx; print(httpx.get('https://pokeapi.co/api/v2/pokemon/pikachu').status_code)"
 ```
 
-## 📝 Licencia
+## 📝 Notas de Desarrollo
+
+### Cambios desde la Versión Anterior
+- ✅ **Eliminado**: Servidor MCP anterior con SSE
+- ✅ **Añadido**: Nuevo pokemon-mcp-server estándar MCP
+- ✅ **Mejorado**: Sistema de queries naturales dinámicas
+- ✅ **Optimizado**: Descubrimiento automático de herramientas MCP
+- ✅ **Limpiado**: Eliminados todos los datos hardcodeados
+
+### Próximas Mejoras
+- [ ] Soporte para más herramientas MCP (get-move, get-ability)
+- [ ] Sistema de cache para consultas frecuentes
+- [ ] Interfaz web para batallas visuales
+- [ ] Soporte para batallas de equipos (6v6)
+
+## 📄 Licencia
 
 MIT License - Ver archivo LICENSE para detalles.
 
 ## 🙏 Agradecimientos
 
 - [smolagents](https://github.com/huggingface/smolagents) por el framework de agentes
-- [poke-mcp](https://github.com/naveenbandarage/poke-mcp) por el servidor MCP
+- [pokemon-mcp-server](https://github.com/indroneelray/pokemon-mcp-server) por el servidor MCP
 - [PokeAPI](https://pokeapi.co/) por los datos de Pokémon
 - [Model Context Protocol](https://modelcontextprotocol.io/) por el estándar MCP
 
 ---
 
-**Desarrollado con ❤️ y ⚡ por el equipo PokeArenAI**
+🎮 **¡Disfruta las batallas Pokémon con IA!** ⚡🔥💧🌱
