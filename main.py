@@ -18,12 +18,33 @@ from smolagents.models import LiteLLMModel
 class TypeWheel:
     def __init__(self):
         self.super_effective = {
-            "water": ["fire"], "fire": ["grass"], "grass": ["water"],
-            "electric": ["water"], "ground": ["electric"], "ice": ["dragon"],
-            "fighting": ["ice"], "psychic": ["fighting"], "dark": ["psychic"],
-            "fairy": ["dragon"], "ghost": ["psychic"]
+            "water": ["fire", "ground", "rock"], 
+            "fire": ["grass", "ice", "bug", "steel"], 
+            "grass": ["water", "ground", "rock"],
+            "electric": ["water", "flying"], 
+            "ground": ["electric", "fire", "poison", "rock", "steel"], 
+            "ice": ["dragon", "grass", "ground", "flying"],
+            "fighting": ["ice", "normal", "rock", "dark", "steel"], 
+            "psychic": ["fighting", "poison"], 
+            "dark": ["psychic", "ghost"],
+            "fairy": ["dragon", "fighting", "dark"], 
+            "ghost": ["psychic", "ghost"],
+            "flying": ["grass", "fighting", "bug"],
+            "rock": ["fire", "ice", "flying", "bug"],
+            "bug": ["grass", "psychic", "dark"],
+            "steel": ["ice", "rock", "fairy"],
+            "poison": ["grass", "fairy"],
+            "dragon": ["dragon"]
         }
-        self.immunities = {"ground": ["electric"]}  # ground immune to electric
+        self.immunities = {
+            "ground": ["electric"],
+            "electric": ["ground"],
+            "ghost": ["normal", "fighting"],
+            "normal": ["ghost"],
+            "fighting": ["ghost"],
+            "psychic": ["dark"],
+            "dark": ["psychic"]
+        }  
     
     def get_multiplier(self, attacker_type: str, defender_type: str) -> float:
         if attacker_type in self.immunities and defender_type in self.immunities[attacker_type]:
@@ -294,6 +315,7 @@ class PokemonQueryTool(Tool):
                         {"name": s["stat"]["name"], "base": s["base_stat"]}
                         for s in pokemon_data["stats"]
                     ],
+                    "base_total": sum(s["base_stat"] for s in pokemon_data["stats"]),  # Calculate base total
                     "sprites": {
                         "front": pokemon_data["sprites"]["front_default"],
                         "back": pokemon_data["sprites"]["back_default"]
@@ -302,8 +324,9 @@ class PokemonQueryTool(Tool):
                 
                 print(f"✅ Successfully retrieved data for {pokemon_name}")
                 print(f"📊 Types: {formatted_data['types']}")
+                print(f"📊 Base total: {formatted_data['base_total']}")
                 stats_summary = [f"{s['name']}: {s['base']}" for s in formatted_data['stats']]
-                print(f"📊 Base stats: {stats_summary}")
+                print(f"📊 Stats breakdown: {stats_summary}")
                 
                 return formatted_data
             
@@ -449,10 +472,15 @@ class PokemonQueryTool(Tool):
 async def create_scout_agent(side: str, pokemon_name: str) -> ToolCallingAgent:
     """Create a scout agent for fetching Pokemon data"""
     
+    # Get API key from environment
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable is required")
+    
     # Initialize Gemini model
     model = LiteLLMModel(
         model_id="gemini/gemini-2.0-flash-exp",
-        api_key=os.getenv("GEMINI_API_KEY", "YOURKEY")
+        api_key=api_key
     )
     
     # Create agent with MCP tool
@@ -464,21 +492,115 @@ async def create_scout_agent(side: str, pokemon_name: str) -> ToolCallingAgent:
     
     return agent
 
-async def create_referee_agent() -> CodeAgent:
+class BattleCalculatorTool(Tool):
+    """Tool for calculating Pokemon battle effectiveness"""
+    
+    name = "calculate_battle"
+    description = "Calculate type effectiveness between two Pokemon and determine winner"
+    inputs = {
+        "p1_data": {
+            "type": "string",
+            "description": "JSON string with Pokemon 1 data (name, types, base_total)"
+        },
+        "p2_data": {
+            "type": "string", 
+            "description": "JSON string with Pokemon 2 data (name, types, base_total)"
+        }
+    }
+    output_type = "string"
+    
+    def __init__(self):
+        super().__init__()
+        self.type_wheel = TypeWheel()
+    
+    def forward(self, p1_data: str, p2_data: str) -> str:
+        """Calculate battle outcome between two Pokemon"""
+        try:
+            # Parse Pokemon data
+            pokemon1 = json.loads(p1_data)
+            pokemon2 = json.loads(p2_data)
+            
+            # Calculate attack multipliers
+            p1_attack_vs_p2 = self.type_wheel.calculate_attack_multiplier(
+                pokemon1["types"], pokemon2["types"]
+            )
+            p2_attack_vs_p1 = self.type_wheel.calculate_attack_multiplier(
+                pokemon2["types"], pokemon1["types"]
+            )
+            
+            # Determine winner
+            if p1_attack_vs_p2 > p2_attack_vs_p1:
+                winner = "p1"
+                reasoning = f"{pokemon1['name'].title()}'s {'/'.join(pokemon1['types'])} attacks were super effective!"
+            elif p2_attack_vs_p1 > p1_attack_vs_p2:
+                winner = "p2"
+                reasoning = f"{pokemon2['name'].title()}'s {'/'.join(pokemon2['types'])} attacks dominated!"
+            else:
+                # Tie-breaker by base stats
+                if pokemon1["base_total"] > pokemon2["base_total"]:
+                    winner = "p1"
+                    reasoning = f"{pokemon1['name'].title()}'s superior stats barely won!"
+                elif pokemon2["base_total"] > pokemon1["base_total"]:
+                    winner = "p2"
+                    reasoning = f"{pokemon2['name'].title()}'s raw power overwhelmed {pokemon1['name']}!"
+                else:
+                    winner = "draw"
+                    reasoning = "A perfect tie! Both Pokemon are equally matched!"
+            
+            # Calculate confidence based on multiplier difference
+            multiplier_diff = abs(p1_attack_vs_p2 - p2_attack_vs_p1)
+            if multiplier_diff >= 1.5:
+                confidence = 0.95
+            elif multiplier_diff >= 1.0:
+                confidence = 0.85
+            elif multiplier_diff >= 0.5:
+                confidence = 0.75
+            else:
+                confidence = 0.60
+            
+            result = {
+                "winner": winner,
+                "reasoning": reasoning,
+                "p1": pokemon1,
+                "p2": pokemon2,
+                "scores": {
+                    "p1_attack_multiplier_vs_p2": p1_attack_vs_p2,
+                    "p2_attack_multiplier_vs_p1": p2_attack_vs_p1
+                },
+                "sources": ["pokemon-mcp-server: pokemon_query"],
+                "confidence": confidence
+            }
+            
+            return json.dumps(result)
+            
+        except Exception as e:
+            error_result = {
+                "error": "calculation_failed",
+                "message": str(e),
+                "p1": p1_data,
+                "p2": p2_data
+            }
+            return json.dumps(error_result)
+
+async def create_referee_agent() -> ToolCallingAgent:
     """Create a referee agent for determining battle outcomes"""
+    
+    # Get API key from environment
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable is required")
     
     # Initialize Gemini model
     model = LiteLLMModel(
         model_id="gemini/gemini-2.0-flash-exp",
-        api_key=os.getenv("GEMINI_API_KEY", "YOURKEY")
+        api_key=api_key
     )
     
-    # Create code agent for calculations
-    agent = CodeAgent(
-        tools=[],  # CodeAgent still needs tools parameter even if empty
+    # Create agent with battle calculator tool
+    agent = ToolCallingAgent(
+        tools=[BattleCalculatorTool()],
         model=model,
-        max_steps=5,
-        additional_authorized_imports=["json", "math"]
+        max_steps=2
     )
     
     return agent
@@ -591,34 +713,17 @@ Fetch data for: {pokemon2}"""
         
         referee_input = f"""You are the Referee, a Pokemon battle judge agent.
 
-**Role:** Decide the victor using the simplified type wheel and code execution.
+**Role:** Determine the winner of a Pokemon battle using type effectiveness calculations.
 
-**Type Effectiveness Rules:**
-- Super-effective (2.0×): water>fire, fire>grass, grass>water, electric>water, ground>electric,
-  ice>dragon, fighting>ice, psychic>fighting, dark>psychic, fairy>dragon, ghost>psychic
-- Not very effective (0.5×): reverse of super-effective pairings
-- Immunity (0.0×): ground immune to electric
-- Dual types: multiply defender multipliers
-- Multiple attacker types: use maximum multiplier
+**Task:** Use the calculate_battle tool to determine the battle outcome between these Pokemon:
 
-**Battle Data:**
 Pokemon 1: {json.dumps(p1_data)}
 Pokemon 2: {json.dumps(p2_data)}
 
-**Task:** Calculate type effectiveness and determine the winner using Python code.
-
-**IMPORTANT:** Use the exact format below for code blocks:
-
-Thoughts: Your analysis
-<code>
-import json
-
-# Your Python code here to calculate effectiveness and determine winner
-# End with: final_answer(json.dumps(result))
-</code>
-
-**Output JSON format:**
-{{"winner": "<p1|p2|draw>", "reasoning": "<one sentence, playful>", "p1": {json.dumps(p1_data)}, "p2": {json.dumps(p2_data)}, "scores": {{"p1_attack_multiplier_vs_p2": 1.0, "p2_attack_multiplier_vs_p1": 2.0}}, "sources": ["pokemon-mcp-server: pokemon_query"], "confidence": 0.0}}
+**Instructions:**
+1. Use the calculate_battle tool with the Pokemon data
+2. The tool will calculate type effectiveness and determine the winner
+3. Return the result as valid JSON
 
 Calculate the battle outcome now."""
         
@@ -631,18 +736,34 @@ Calculate the battle outcome now."""
             if isinstance(referee_result, dict):
                 result = referee_result
             else:
-                # Fix JSON formatting issues (contractions and quotes)
-                import re
-                referee_result_fixed = referee_result
-                # Handle contractions like "Squirtle"s" -> "Squirtle's" 
-                referee_result_fixed = re.sub(r'"([^"]*)"s\b', r'"\1\'s', referee_result_fixed)
-                result = json.loads(referee_result_fixed)
+                # Try to parse as JSON
+                result = json.loads(referee_result)
+            
+            # Check for errors in calculation
+            if "error" in result:
+                print(f"❌ Battle calculation error: {result.get('message', 'Unknown error')}")
+                return
             
             print("\n" + "=" * 50)
-            print(f"🏆 Referee: {result['reasoning']}")
+            print(f"🏆 {result['reasoning']}")
+            
+            # Show battle analysis
+            scores = result.get('scores', {})
+            p1_mult = scores.get('p1_attack_multiplier_vs_p2', 1.0)
+            p2_mult = scores.get('p2_attack_multiplier_vs_p1', 1.0)
+            
+            print(f"\n⚔️ Battle Analysis:")
+            print(f"🧮 {p1_data['name'].title()} vs {p2_data['name'].title()}: {p1_mult}× effectiveness")
+            print(f"🧮 {p2_data['name'].title()} vs {p1_data['name'].title()}: {p2_mult}× effectiveness")
+            
+            winner_name = p1_data['name'].title() if result['winner'] == 'p1' else p2_data['name'].title()
+            print(f"\n🏆 WINNER: {winner_name}")
+            print(f"🎯 REASON: {result['reasoning']}")
+            
             print(f"\n📊 Full Battle Report:")
             print(json.dumps(result, indent=2))
-        except (json.JSONDecodeError, TypeError) as e:
+            
+        except (json.JSONDecodeError, TypeError, KeyError) as e:
             print("❌ Error: Could not parse referee result")
             print(f"Raw result: {referee_result}")
             print(f"Error: {e}")
