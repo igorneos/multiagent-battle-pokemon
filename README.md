@@ -231,13 +231,61 @@ pip install -r requirements.txt
 ```
 
 ### 3. **Configurar API Key de Gemini**
-```bash
-# Windows
+
+#### **Paso 1: Obtener tu API Key**
+1. Ve a [Google AI Studio](https://aistudio.google.com/)
+2. Inicia sesión con tu cuenta de Google
+3. Haz click en "Get API Key" o "Create API Key"
+4. Copia tu API key (comenzará con `AIza...`)
+
+#### **Paso 2: Configurar la Variable de Entorno**
+
+**En Windows (PowerShell):**
+```powershell
+# Temporal (solo para la sesión actual)
+$env:GEMINI_API_KEY="tu_api_key_aqui"
+
+# Permanente (recomendado)
+[Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "tu_api_key_aqui", "User")
+```
+
+**En Windows (Command Prompt):**
+```cmd
+# Temporal
 set GEMINI_API_KEY=tu_api_key_aqui
 
-# Linux/Mac
-export GEMINI_API_KEY=tu_api_key_aqui
+# Permanente
+setx GEMINI_API_KEY "tu_api_key_aqui"
 ```
+
+**En Linux/Mac:**
+```bash
+# Temporal
+export GEMINI_API_KEY="tu_api_key_aqui"
+
+# Permanente (añadir al ~/.bashrc o ~/.zshrc)
+echo 'export GEMINI_API_KEY="tu_api_key_aqui"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### **Paso 3: Verificar la Configuración**
+```bash
+# Windows PowerShell
+echo $env:GEMINI_API_KEY
+
+# Linux/Mac
+echo $GEMINI_API_KEY
+```
+
+⚠️ **Importante:** 
+- **Nunca** compartas tu API key públicamente
+- **Nunca** la incluyas en tu código fuente
+- Mantén tu API key segura y privada
+- La API key debe empezar con `AIza...`
+
+💡 **Cuota Gratuita de Gemini:**
+- Google Gemini ofrece 15 requests por minuto de forma gratuita
+- Si superas el límite, espera ~30 segundos o considera upgrading tu plan
 
 ## 🎮 Uso
 
@@ -260,6 +308,19 @@ python main.py mew pikachu
 # Dual types
 python main.py garchomp flygon
 ```
+
+### 🎬 Demo en Vivo
+
+Aquí puedes ver el sistema en acción con el comando `python main.py pikachu charizard`:
+
+![PokeArenAI Demo](example_battle.gif)
+
+**Lo que puedes observar en la demo:**
+- 🕵️ **Scouts paralelos** recogiendo datos de Pikachu y Charizard via PokéAPI
+- 🔍 **Descubrimiento automático** de 5 herramientas MCP disponibles
+- ⚡ **Cálculos de efectividad** mostrando Electric (2.0×) vs Fire/Flying
+- 🏆 **Decisión del referee** determinando que Pikachu gana por ventaja de tipo
+- 📊 **Reporte completo** con stats, multiplicadores y confianza del resultado
 
 ### Salida de Ejemplo
 ```
@@ -355,6 +416,23 @@ class PokemonQueryTool(Tool):
 
 ## 🐛 Troubleshooting
 
+### Error: "GEMINI_API_KEY environment variable is required"
+```bash
+# Verificar que la variable esté configurada
+# Windows PowerShell
+echo $env:GEMINI_API_KEY
+
+# Linux/Mac  
+echo $GEMINI_API_KEY
+
+# Si no aparece nada, configurar la variable:
+# Windows PowerShell
+$env:GEMINI_API_KEY="tu_api_key_aqui"
+
+# Linux/Mac
+export GEMINI_API_KEY="tu_api_key_aqui"
+```
+
 ### Error: "MCP server not responding"
 ```bash
 # Verificar que pokemon-mcp-server esté ejecutándose
@@ -364,8 +442,11 @@ npm start
 
 ### Error: "Gemini API quota exceeded"
 ```bash
-# Esperar 24h o usar una API key diferente
+# Esperar ~30 segundos o usar una API key diferente
 export GEMINI_API_KEY=nueva_api_key
+
+# O verificar tu cuota en Google AI Studio:
+# https://aistudio.google.com/
 ```
 
 ### Error: "Pokemon not found"
@@ -374,20 +455,13 @@ export GEMINI_API_KEY=nueva_api_key
 python -c "import httpx; print(httpx.get('https://pokeapi.co/api/v2/pokemon/pikachu').status_code)"
 ```
 
-## 📝 Notas de Desarrollo
+### Error: "Client error '401 Unauthorized'"
+```bash
+# API key inválida - verificar que sea correcta
+# Debe empezar con "AIza..."
+# Obtener nueva API key en: https://aistudio.google.com/
+```
 
-### Cambios desde la Versión Anterior
-- ✅ **Eliminado**: Servidor MCP anterior con SSE
-- ✅ **Añadido**: Nuevo pokemon-mcp-server estándar MCP
-- ✅ **Mejorado**: Sistema de queries naturales dinámicas
-- ✅ **Optimizado**: Descubrimiento automático de herramientas MCP
-- ✅ **Limpiado**: Eliminados todos los datos hardcodeados
-
-### Próximas Mejoras
-- [ ] Soporte para más herramientas MCP (get-move, get-ability)
-- [ ] Sistema de cache para consultas frecuentes
-- [ ] Interfaz web para batallas visuales
-- [ ] Soporte para batallas de equipos (6v6)
 
 ## 📄 Licencia
 
