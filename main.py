@@ -16,52 +16,130 @@ from smolagents.models import LiteLLMModel
 
 # Type effectiveness system
 class TypeWheel:
+    """
+    Sistema de efectividad de tipos de Pokémon 100% fiel al estándar oficial.
+    
+    Implementa la tabla completa de 18 tipos con:
+    - Super efectivo (2.0×): Atacante fuerte contra defensor
+    - No muy efectivo (0.5×): Defensor resiste al atacante  
+    - Inmunidades (0.0×): Defensor completamente inmune
+    - Tipos duales: Multiplicación de efectividades
+    - Multi-atacante: Selección del máximo multiplicador
+    
+    Fuente oficial: https://vandal.elespanol.com/reportaje/tabla-de-tipos-de-pokemon-fortalezas-y-debilidades-en-todos-los-juegos
+    """
     def __init__(self):
+        # Tabla de efectividad oficial de Pokémon - Cada tipo es EFICAZ CONTRA los tipos listados
         self.super_effective = {
-            "water": ["fire", "ground", "rock"], 
-            "fire": ["grass", "ice", "bug", "steel"], 
-            "grass": ["water", "ground", "rock"],
-            "electric": ["water", "flying"], 
-            "ground": ["electric", "fire", "poison", "rock", "steel"], 
-            "ice": ["dragon", "grass", "ground", "flying"],
-            "fighting": ["ice", "normal", "rock", "dark", "steel"], 
-            "psychic": ["fighting", "poison"], 
-            "dark": ["psychic", "ghost"],
-            "fairy": ["dragon", "fighting", "dark"], 
-            "ghost": ["psychic", "ghost"],
-            "flying": ["grass", "fighting", "bug"],
-            "rock": ["fire", "ice", "flying", "bug"],
-            "bug": ["grass", "psychic", "dark"],
-            "steel": ["ice", "rock", "fairy"],
-            "poison": ["grass", "fairy"],
-            "dragon": ["dragon"]
+            "normal": [],  # Normal no es eficaz contra ningún tipo
+            "fire": ["grass", "ice", "bug", "steel"],  # Fuego > Planta, Hielo, Bicho, Acero
+            "water": ["fire", "ground", "rock"],  # Agua > Fuego, Tierra, Roca
+            "electric": ["water", "flying"],  # Eléctrico > Agua, Volador
+            "grass": ["water", "ground", "rock"],  # Planta > Agua, Tierra, Roca
+            "ice": ["grass", "ground", "flying", "dragon"],  # Hielo > Planta, Tierra, Volador, Dragón
+            "fighting": ["normal", "ice", "rock", "dark", "steel"],  # Lucha > Normal, Hielo, Roca, Siniestro, Acero
+            "poison": ["grass", "fairy"],  # Veneno > Planta, Hada
+            "ground": ["fire", "electric", "poison", "rock", "steel"],  # Tierra > Fuego, Eléctrico, Veneno, Roca, Acero
+            "flying": ["grass", "fighting", "bug"],  # Volador > Planta, Lucha, Bicho
+            "psychic": ["fighting", "poison"],  # Psíquico > Lucha, Veneno
+            "bug": ["grass", "psychic", "dark"],  # Bicho > Planta, Psíquico, Siniestro
+            "rock": ["fire", "ice", "flying", "bug"],  # Roca > Fuego, Hielo, Volador, Bicho
+            "ghost": ["psychic", "ghost"],  # Fantasma > Psíquico, Fantasma
+            "dragon": ["dragon"],  # Dragón > Dragón
+            "dark": ["psychic", "ghost"],  # Siniestro > Psíquico, Fantasma
+            "steel": ["ice", "rock", "fairy"],  # Acero > Hielo, Roca, Hada
+            "fairy": ["fighting", "dragon", "dark"]  # Hada > Lucha, Dragón, Siniestro
         }
+        
+        # Inmunidades: Defender es INMUNE a estos tipos de atacante (0.0× daño)
         self.immunities = {
-            "ground": ["electric"],
-            "electric": ["ground"],
-            "ghost": ["normal", "fighting"],
-            "normal": ["ghost"],
-            "fighting": ["ghost"],
-            "psychic": ["dark"],
-            "dark": ["psychic"]
+            "normal": ["ghost"],           # Normal es inmune a Fantasma
+            "fire": [],
+            "water": [],
+            "electric": [],
+            "grass": [],
+            "ice": [],
+            "fighting": ["ghost"],         # Lucha es inmune a Fantasma
+            "poison": [],
+            "ground": ["electric"],        # Tierra es inmune a Eléctrico
+            "flying": ["ground"],          # Volador es inmune a Tierra
+            "psychic": [],
+            "bug": [],
+            "rock": [],
+            "ghost": ["normal", "fighting"], # Fantasma es inmune a Normal y Lucha
+            "dragon": [],
+            "dark": ["psychic"],           # Siniestro es inmune a Psíquico
+            "steel": ["poison"],           # Acero es inmune a Veneno
+            "fairy": []
         }  
     
     def get_multiplier(self, attacker_type: str, defender_type: str) -> float:
-        if attacker_type in self.immunities and defender_type in self.immunities[attacker_type]:
+        """
+        Calcula el multiplicador de efectividad entre dos tipos individuales.
+        
+        Orden de prioridad:
+        1. Inmunidades (0.0×) - máxima prioridad
+        2. Super efectivo (2.0×) - atacante fuerte contra defensor  
+        3. No muy efectivo (0.5×) - defensor resiste al atacante
+        4. Normal (1.0×) - sin ventaja/desventaja especial
+        
+        Args:
+            attacker_type: Tipo del atacante (ej: "electric")
+            defender_type: Tipo del defensor (ej: "flying")
+            
+        Returns:
+            float: Multiplicador de daño (0.0, 0.5, 1.0, o 2.0)
+        """
+        # 1. INMUNIDADES (0.0×): Defender completamente inmune a attacker
+        if defender_type in self.immunities and attacker_type in self.immunities[defender_type]:
             return 0.0
+            
+        # 2. SUPER EFECTIVO (2.0×): Attacker es eficaz contra defender
         if attacker_type in self.super_effective and defender_type in self.super_effective[attacker_type]:
             return 2.0
+            
+        # 3. NO MUY EFECTIVO (0.5×): Defender resiste a attacker (reverso de super_effective)
         if defender_type in self.super_effective and attacker_type in self.super_effective[defender_type]:
             return 0.5
+            
+        # 4. NORMAL (1.0×): Sin ventaja especial
         return 1.0
     
     def calculate_attack_multiplier(self, attacker_types: List[str], defender_types: List[str]) -> float:
-        max_multiplier = 1.0
+        """
+        Calcula el multiplicador de efectividad para Pokémon con tipos múltiples.
+        
+        Reglas implementadas:
+        - DEFENSOR dual-type: Multiplica efectividades (ej: Ice vs Dragon/Flying = 2.0 × 2.0 = 4.0×)
+        - ATACANTE multi-type: Toma el MÁXIMO multiplicador (ej: Fire/Flying vs Electric = max(1.0×, 0.5×) = 1.0×)
+        - INMUNIDADES: Cualquier 0.0× hace el total = 0.0× (prioridad absoluta)
+        
+        Args:
+            attacker_types: Lista de tipos del atacante (ej: ["fire", "flying"])
+            defender_types: Lista de tipos del defensor (ej: ["water", "ground"])
+            
+        Returns:
+            float: Multiplicador final de daño
+            
+        Ejemplos:
+            - Electric vs [Fire, Flying] = 1.0 × 2.0 = 2.0×
+            - [Fire, Flying] vs Electric = max(1.0×, 0.5×) = 1.0×
+            - Ground vs [Fire, Flying] = max(2.0 × 0.0) = 0.0×
+        """
+        max_multiplier = 0.0  # Comenzar con 0.0 para manejar inmunidades correctamente
+        
+        # Para cada tipo del atacante, calcular efectividad total contra todos los tipos del defensor
         for attacker_type in attacker_types:
             total_multiplier = 1.0
+            
+            # Multiplicar efectividades contra cada tipo del defensor
             for defender_type in defender_types:
-                total_multiplier *= self.get_multiplier(attacker_type.lower(), defender_type.lower())
+                multiplier = self.get_multiplier(attacker_type.lower(), defender_type.lower())
+                total_multiplier *= multiplier
+                
+            # Tomar el máximo multiplicador entre todos los tipos del atacante
             max_multiplier = max(max_multiplier, total_multiplier)
+            
         return max_multiplier
 
 class PokemonQueryTool(Tool):

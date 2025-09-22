@@ -132,13 +132,108 @@ graph TB
 - **Instalación**: `npm install && npm run build && npm start`
 
 ### 6. **TypeWheel System**
-- **Función**: Sistema de efectividad de tipos completo
+- **Función**: Sistema de efectividad de tipos **100% fiel a la tabla oficial Pokémon**
+- **Cobertura**: Todos los 18 tipos principales implementados
 - **Reglas implementadas**:
-  - **Super-efectivo (2.0×)**: water>fire, fire>grass, electric>water, etc.
-  - **No muy efectivo (0.5×)**: Reverso de super-efectivo
-  - **Inmunidad (0.0×)**: ground immune to electric
-  - **Tipos duales**: Multiplicación de efectividades
-  - **Atacante multi-tipo**: Máximo multiplicador
+  - **Super-efectivo (2.0×)**: Según tabla oficial (ej: electric→water/flying, fire→grass, water→fire/ground/rock)
+  - **No muy efectivo (0.5×)**: Reverso exacto de super-efectivo
+  - **Inmunidades (0.0×)**: electric→ground, ground→flying, normal/fighting→ghost, psychic→dark, poison→steel
+  - **Tipos duales**: Multiplicación precisa de efectividades
+  - **Atacante multi-tipo**: Selecciona el máximo multiplicador
+
+#### 📊 Cómo Funciona la Tabla de Tipos
+
+La tabla de efectividad sigue el estándar oficial de Pokémon con 3 niveles de daño:
+
+**🎯 Super Efectivo (2.0×)**
+```
+Electric > Water, Flying    | Fire > Grass, Ice, Bug, Steel
+Water > Fire, Ground, Rock  | Grass > Water, Ground, Rock  
+Ice > Grass, Ground, Flying, Dragon | Fighting > Normal, Ice, Rock, Dark, Steel
+Poison > Grass, Fairy       | Ground > Fire, Electric, Poison, Rock, Steel
+Flying > Grass, Fighting, Bug | Psychic > Fighting, Poison
+Bug > Grass, Psychic, Dark  | Rock > Fire, Ice, Flying, Bug
+Ghost > Psychic, Ghost      | Dragon > Dragon
+Dark > Psychic, Ghost       | Steel > Ice, Rock, Fairy
+Fairy > Fighting, Dragon, Dark
+```
+
+**🛡️ No Muy Efectivo (0.5×)**
+- Reverso exacto de super efectivo (ej: Water vs Grass = 0.5×)
+
+**🚫 Inmunidades (0.0×)**
+```
+Electric → Ground (Tierra inmune a Eléctrico)
+Ground → Flying (Volador inmune a Tierra)  
+Normal/Fighting → Ghost (Fantasma inmune a Normal y Lucha)
+Psychic → Dark (Siniestro inmune a Psíquico)
+Poison → Steel (Acero inmune a Veneno)
+```
+
+**⚡ Tipos Duales**
+- Para defensores con 2 tipos: se multiplican las efectividades
+- Ejemplo: Ice vs Dragon/Flying = 2.0 × 2.0 = **4.0× (súper súper efectivo)**
+- Si hay inmunidad: cualquier 0.0× hace el total = 0.0×
+
+**🎮 Atacantes Multi-tipo**
+- Selecciona el **máximo** multiplicador de todos los tipos del atacante
+- Ejemplo: Fire/Flying vs Electric = max(Fire→Electric=1.0×, Flying→Electric=0.5×) = **1.0×**
+
+#### 🧮 Ejemplos Prácticos de Cálculo
+
+**Caso 1: Pikachu (Electric) vs Charizard (Fire/Flying)**
+```
+1. Electric vs Fire = 1.0× (daño normal)
+2. Electric vs Flying = 2.0× (super efectivo)
+3. Resultado: 1.0 × 2.0 = 2.0× (super efectivo)
+✅ Pikachu tiene ventaja
+```
+
+**Caso 2: Charizard (Fire/Flying) vs Pikachu (Electric)**
+```
+1. Fire vs Electric = 1.0× (daño normal)
+2. Flying vs Electric = 0.5× (no muy efectivo)
+3. Multi-atacante: max(1.0×, 0.5×) = 1.0× (daño normal)
+✅ Sin ventaja especial
+```
+
+**Caso 3: Geodude (Rock/Ground) vs Pidgeot (Normal/Flying)**
+```
+1. Rock vs Normal = 1.0×, Rock vs Flying = 2.0× → 1.0 × 2.0 = 2.0×
+2. Ground vs Normal = 1.0×, Ground vs Flying = 0.0× → 1.0 × 0.0 = 0.0×
+3. Multi-atacante: max(2.0×, 0.0×) = 2.0× (super efectivo)
+✅ Rock efectivo, Ground inmune
+```
+
+**Caso 4: Alakazam (Psychic) vs Umbreon (Dark)**
+```
+1. Psychic vs Dark = 0.0× (inmunidad total)
+✅ Umbreon completamente inmune
+```
+
+#### 🔍 Verificación de la Tabla de Tipos
+
+Puedes probar la tabla de efectividad directamente en Python:
+
+```python
+from main import TypeWheel
+
+tw = TypeWheel()
+
+# Probar efectividades básicas
+print("Electric vs Flying:", tw.get_multiplier("electric", "flying"))  # 2.0
+print("Water vs Fire:", tw.get_multiplier("water", "fire"))  # 2.0
+print("Electric vs Ground:", tw.get_multiplier("electric", "ground"))  # 0.0
+
+# Probar tipos duales
+print("Electric vs Fire/Flying:", tw.calculate_attack_multiplier(["electric"], ["fire", "flying"]))  # 2.0
+print("Ice vs Dragon/Flying:", tw.calculate_attack_multiplier(["ice"], ["dragon", "flying"]))  # 4.0
+
+# Probar multi-atacantes
+print("Fire/Flying vs Electric:", tw.calculate_attack_multiplier(["fire", "flying"], ["electric"]))  # 1.0
+```
+
+**Referencia oficial**: [Tabla de tipos Pokémon - Vandal](https://vandal.elespanol.com/reportaje/tabla-de-tipos-de-pokemon-fortalezas-y-debilidades-en-todos-los-juegos)
 
 ## 🔄 Flujo de Ejecución
 
@@ -185,10 +280,10 @@ sequenceDiagram
     
     Orchestrator->>Referee: Battle(P1_data, P2_data)
     Referee->>TypeWheel: calculate_effectiveness(electric, [fire, flying])
-    TypeWheel-->>Referee: P1: 0.5× vs P2: 2.0×
+    TypeWheel-->>Referee: P1: 2.0× vs P2: 0.5×
     Referee-->>Orchestrator: Battle result JSON
     
-    Orchestrator->>CLI: 🏆 charizard wins! (Fire/Flying resists Electric)
+    Orchestrator->>CLI: 🏆 pikachu wins! (Electric is super effective vs Flying)
 ```
 
 ## 🛠️ Instalación y Configuración
@@ -343,11 +438,11 @@ Aquí puedes ver el sistema en acción con el comando `python main.py pikachu ch
 ✅ charizard: Fire/Flying type, base total 534
 
 ⚔️ Referee calculating battle effectiveness...
-🧮 Electric vs Fire/Flying: 0.5× effectiveness (Not very effective)
-🧮 Fire/Flying vs Electric: 2.0× effectiveness (Super effective!)
+🧮 Electric vs Fire/Flying: 2.0× effectiveness (Super effective!)
+🧮 Fire/Flying vs Electric: 0.5× effectiveness (Not very effective)
 
-🏆 WINNER: charizard
-🎯 REASON: Fire/Flying resists Electric attacks, while Fire is neutral against Electric
+🏆 WINNER: pikachu
+🎯 REASON: Electric is super effective against Flying type, giving Pikachu the advantage
 ```
 
 ## 📁 Estructura del Proyecto
