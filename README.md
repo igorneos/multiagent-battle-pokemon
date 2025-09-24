@@ -459,6 +459,140 @@ multiagent-battle-pokemon/
 
 ## 🔧 Arquitectura Técnica
 
+### 🤖 Framework Smolagents - Sistema Multi-Agente
+
+El sistema utiliza **smolagents 1.21.3** de Hugging Face como framework principal para orquestar tres agentes especializados:
+
+#### **1. Arquitectura de Agentes**
+
+```python
+from smolagents import HfApiModel, ToolCallingAgent
+
+# Configuración del modelo LLM compartido
+llm_model = LiteLLMModel(
+    model_id="gemini/gemini-2.0-flash-exp",
+    temperature=0.7
+)
+
+# Agente 1: Scout Izquierdo (Pokemon 1)
+scout_left = ToolCallingAgent(
+    tools=[pokemon_query_tool],
+    model=llm_model,
+    max_iterations=3,
+    verbose=True
+)
+
+# Agente 2: Scout Derecho (Pokemon 2)  
+scout_right = ToolCallingAgent(
+    tools=[pokemon_query_tool],
+    model=llm_model,
+    max_iterations=3,
+    verbose=True
+)
+
+# Agente 3: Referee (Calculador de Batalla)
+referee = ToolCallingAgent(
+    tools=[battle_calculator_tool],
+    model=llm_model,
+    max_iterations=5,
+    verbose=True
+)
+```
+
+#### **2. Patrón de Comunicación Multi-Agente**
+
+```python
+async def battle_orchestration(pokemon1_name, pokemon2_name):
+    # FASE 1: Recolección paralela de datos
+    tasks = [
+        scout_left.run(f"Get data for {pokemon1_name}"),
+        scout_right.run(f"Get data for {pokemon2_name}")
+    ]
+    pokemon_data = await asyncio.gather(*tasks)
+    
+    # FASE 2: Cálculo de batalla centralizado
+    battle_prompt = f"""
+    Calculate battle between:
+    Pokemon 1: {pokemon_data[0]}
+    Pokemon 2: {pokemon_data[1]}
+    Determine winner using type effectiveness.
+    """
+    result = referee.run(battle_prompt)
+    return result
+```
+
+#### **3. Especialización de Agentes**
+
+| Agente | Herramientas | Función | Iteraciones |
+|--------|-------------|---------|-------------|
+| **Scout Left** | `PokemonQueryTool` | Datos del Pokemon 1 | Max 3 |
+| **Scout Right** | `PokemonQueryTool` | Datos del Pokemon 2 | Max 3 |
+| **Referee** | `BattleCalculatorTool` | Cálculo de batalla | Max 5 |
+
+### 🧠 LiteLLM - Integración con Gemini
+
+El sistema utiliza **LiteLLM** como abstracción para conectar smolagents con Google Gemini:
+
+#### **1. Configuración del Modelo**
+
+```python
+from smolagents.models import LiteLLMModel
+
+# Inicialización con configuración optimizada
+llm_model = LiteLLMModel(
+    model_id="gemini/gemini-2.0-flash-exp",  # Modelo más avanzado de Google
+    temperature=0.7,                         # Balance creatividad/precisión
+    max_tokens=2048,                        # Respuestas detalladas
+    timeout=30,                             # Timeout robusto
+)
+```
+
+#### **2. Gestión de Cuotas y Rate Limiting**
+
+```python
+# Rate limiting automático para Gemini free tier
+# 15 requests/minute → ~4 segundos entre llamadas
+async def with_rate_limit(agent_call):
+    try:
+        result = await agent_call()
+        await asyncio.sleep(4.5)  # Respeta límites de Gemini
+        return result
+    except Exception as e:
+        if "quota exceeded" in str(e):
+            print("⚠️ Gemini quota exceeded - waiting...")
+            await asyncio.sleep(60)  # Espera 1 minuto
+            return await agent_call()  # Retry
+        raise e
+```
+
+#### **3. Ventajas de LiteLLM + Smolagents**
+
+- **Abstracción Universal**: Mismo código funciona con OpenAI, Anthropic, Gemini, etc.
+- **Error Handling**: Manejo automático de errores de API y rate limits
+- **Cost Tracking**: Seguimiento automático de tokens y costos
+- **Async Support**: Operaciones no-bloqueantes para multi-agente
+- **Prompt Templates**: Optimización automática para cada modelo
+
+### 🔄 Flujo de Ejecución Detallado
+
+```mermaid
+graph TD
+    A[CLI Input] --> B[Battle Orchestrator]
+    B --> C[Scout Left: PokemonQueryTool]
+    B --> D[Scout Right: PokemonQueryTool]
+    C --> E[LiteLLM → Gemini API]
+    D --> F[LiteLLM → Gemini API]
+    E --> G[MCP Pokemon Server]
+    F --> H[MCP Pokemon Server]
+    G --> I[PokéAPI Response]
+    H --> J[PokéAPI Response]
+    I --> K[Referee: BattleCalculatorTool]
+    J --> K
+    K --> L[LiteLLM → Gemini API]
+    L --> M[TypeWheel Calculation]
+    M --> N[Battle Result]
+```
+
 ### PokemonQueryTool - Detalles de Implementación
 
 ```python
@@ -492,22 +626,242 @@ class PokemonQueryTool(Tool):
 4. **Llamada MCP**: `_call_mcp_tool()` → Se conecta a PokéAPI via MCP server
 5. **Formateo**: Convierte respuesta a formato estándar para el sistema de batalla
 
+### 🛠️ Implementación Técnica Smolagents
+
+#### **Tool System - Herramientas Especializadas**
+
+```python
+from smolagents import Tool
+
+class PokemonQueryTool(Tool):
+    name = "mcp_pokemon_query"
+    description = "Connect to MCP server and query Pokemon data"
+    inputs = {
+        "pokemon_name": {"type": "string", "description": "Name of Pokemon to query"},
+        "style": {"type": "string", "description": "Query style preference"}
+    }
+    output_type = "object"
+    
+    def forward(self, pokemon_name: str, style: str = "detailed") -> Dict:
+        # Implementación del protocolo MCP
+        return self._execute_mcp_query(pokemon_name, style)
+
+class BattleCalculatorTool(Tool):
+    name = "battle_calculator"
+    description = "Calculate type effectiveness and determine winner"
+    inputs = {
+        "pokemon1_data": {"type": "object", "description": "First Pokemon data"},
+        "pokemon2_data": {"type": "object", "description": "Second Pokemon data"}
+    }
+    output_type = "object"
+    
+    def forward(self, pokemon1_data: Dict, pokemon2_data: Dict) -> Dict:
+        # Implementación del sistema TypeWheel
+        return self._calculate_battle_result(pokemon1_data, pokemon2_data)
+```
+
+#### **Agent Configuration - Configuración Avanzada**
+
+```python
+# Configuración optimizada para batallas Pokemon
+def create_battle_agents():
+    base_config = {
+        "model": LiteLLMModel(
+            model_id="gemini/gemini-2.0-flash-exp",
+            temperature=0.7,
+            max_tokens=2048
+        ),
+        "verbose": True,
+        "planning_interval": 3  # Re-planifica cada 3 iteraciones
+    }
+    
+    # Scout especializado en recolección de datos
+    scout_config = {
+        **base_config,
+        "max_iterations": 3,
+        "system_prompt": """You are a Pokemon data scout. Your job is to:
+        1. Query Pokemon data efficiently
+        2. Extract relevant battle information
+        3. Format data consistently
+        Focus on name, types, and base stats."""
+    }
+    
+    # Referee especializado en cálculos de batalla
+    referee_config = {
+        **base_config,
+        "max_iterations": 5,
+        "system_prompt": """You are a Pokemon battle referee. Your job is to:
+        1. Analyze type effectiveness using official Pokemon rules
+        2. Calculate battle outcomes fairly
+        3. Provide detailed reasoning
+        You have access to the complete type effectiveness chart."""
+    }
+    
+    return scout_config, referee_config
+```
+
+#### **LiteLLM Advanced Features**
+
+```python
+# Configuración avanzada de LiteLLM para producción
+llm_model = LiteLLMModel(
+    model_id="gemini/gemini-2.0-flash-exp",
+    
+    # Performance tuning
+    temperature=0.7,           # Balance precisión/creatividad
+    max_tokens=2048,          # Respuestas completas
+    top_p=0.9,               # Diversidad controlada
+    
+    # Reliability features
+    timeout=30,              # Timeout generoso
+    max_retries=3,           # Reintentos automáticos
+    retry_delay=2,           # Delay entre reintentos
+    
+    # Cost optimization
+    stream=False,            # Respuestas completas para agentes
+    cache=True,              # Cache de respuestas similares
+    
+    # Error handling
+    fallback_models=[        # Modelos de respaldo
+        "gemini/gemini-1.5-flash",
+        "gpt-3.5-turbo"
+    ],
+    
+    # Monitoring
+    log_requests=True,       # Logging para debugging
+    track_cost=True          # Seguimiento de costos
+)
+```
+
+#### **Async Multi-Agent Orchestration**
+
+```python
+import asyncio
+from typing import List, Dict, Any
+
+class BattleOrchestrator:
+    def __init__(self):
+        self.scout_left = None
+        self.scout_right = None  
+        self.referee = None
+        self._setup_agents()
+    
+    async def execute_battle(self, pokemon1: str, pokemon2: str) -> Dict:
+        """Orquesta una batalla completa usando múltiples agentes"""
+        
+        # FASE 1: Recolección paralela de datos (2 agentes)
+        print("🕵️ Deploying scouts in parallel...")
+        scout_tasks = [
+            self._run_scout_with_timeout(self.scout_left, pokemon1, "left"),
+            self._run_scout_with_timeout(self.scout_right, pokemon2, "right")
+        ]
+        
+        # Ejecutar scouts en paralelo con timeout
+        try:
+            pokemon_data = await asyncio.wait_for(
+                asyncio.gather(*scout_tasks), 
+                timeout=45  # Timeout total para ambos scouts
+            )
+        except asyncio.TimeoutError:
+            raise Exception("Scout timeout - MCP server may be slow")
+        
+        # FASE 2: Análisis de batalla (1 agente especializado)
+        print("⚔️ Referee analyzing battle...")
+        battle_result = await self._run_referee_with_retry(
+            pokemon_data[0], pokemon_data[1]
+        )
+        
+        return battle_result
+    
+    async def _run_scout_with_timeout(self, scout, pokemon_name, side):
+        """Ejecuta un scout con manejo de errores y timeout"""
+        try:
+            result = await asyncio.wait_for(
+                scout.arun(f"Get battle data for {pokemon_name}"),
+                timeout=30
+            )
+            return self._parse_scout_result(result, pokemon_name)
+        except Exception as e:
+            print(f"⚠️ Scout {side} error: {e}")
+            # Fallback a datos básicos
+            return {"name": pokemon_name, "types": ["normal"], "base_total": 400}
+    
+    async def _run_referee_with_retry(self, p1_data, p2_data, max_retries=2):
+        """Ejecuta el referee con reintentos en caso de error"""
+        for attempt in range(max_retries + 1):
+            try:
+                prompt = self._build_referee_prompt(p1_data, p2_data)
+                result = await self.referee.arun(prompt)
+                return self._parse_referee_result(result)
+            except Exception as e:
+                if attempt == max_retries:
+                    raise e
+                print(f"⚠️ Referee retry {attempt + 1}/{max_retries}")
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+```
+
 ## 🚀 Características Avanzadas
 
+### 🤖 Smolagents Framework Benefits
+- **Agent Specialization**: Cada agente optimizado para una tarea específica (scouts vs referee)
+- **Tool System**: Herramientas encapsuladas con validación de inputs/outputs automática
+- **Async Execution**: Soporte nativo para operaciones paralelas y no-bloqueantes
+- **Planning & Iteration**: Agentes planifican y ajustan estrategia automáticamente
+- **Robust Error Handling**: Sistema de reintentos y fallbacks integrado
+
+### 🔗 LiteLLM Integration Advantages
+- **Model Abstraction**: Mismo código funciona con cualquier LLM (OpenAI, Anthropic, Gemini)
+- **Cost Optimization**: Seguimiento automático de tokens y costos por agente
+- **Rate Limit Management**: Manejo automático de cuotas y límites de API
+- **Fallback Models**: Cambio automático a modelos de respaldo si hay fallas
+- **Streaming Support**: Respuestas en tiempo real para mejor UX
+
 ### 🔄 Sistema MCP Dinámico
-- **Auto-descubrimiento**: No requiere configuración manual de herramientas
+- **Auto-descubrimiento**: `_discover_mcp_tools()` detecta herramientas disponibles dinámicamente
+- **Tool Selection**: Algoritmo inteligente selecciona mejor herramienta por contexto
 - **Adaptabilidad**: Se ajusta automáticamente si cambian las herramientas del servidor
-- **Queries flexibles**: El LLM genera diferentes tipos de consultas según el contexto
+- **Natural Queries**: LLM genera consultas en lenguaje natural contextualmente
 
 ### 🧠 Multi-Agent Intelligence
-- **Paralelización**: Los scouts trabajan simultáneamente para máxima eficiencia
-- **Especialización**: Cada agente tiene un rol específico y optimizado
-- **Error handling**: Sistema robusto de manejo de errores y fallbacks
+- **Parallel Execution**: Scouts ejecutan en paralelo con `asyncio.gather()`
+- **Timeout Management**: Timeouts granulares (30s scouts, 45s total)
+- **Retry Logic**: Exponential backoff para fallos temporales
+- **Graceful Degradation**: Fallback a datos básicos si falla recolección
+- **Context Sharing**: Datos compartidos eficientemente entre agentes
 
-### ⚡ Performance
-- **Cache de herramientas**: Descubrimiento una sola vez por sesión
-- **Conexiones eficientes**: Reutilización de conexiones HTTP
-- **Respuestas rápidas**: Consultas directas a PokéAPI sin intermediarios
+### ⚡ Performance Optimizations
+- **Connection Pooling**: Reutilización de conexiones HTTP hacia MCP server
+- **Caching Strategy**: Cache de herramientas MCP (una vez por sesión)
+- **Async I/O**: Operaciones no-bloqueantes para máxima concurrencia
+- **Smart Batching**: Agrupación inteligente de consultas similares
+- **Resource Management**: Cleanup automático de recursos y conexiones
+
+### 📋 Resumen Técnico
+
+**Stack Tecnológico:**
+```
+Frontend: Python 3.12+ CLI
+Framework: smolagents 1.21.3 (Hugging Face)
+LLM Backend: LiteLLM → Google Gemini 2.0-flash-exp
+Data Protocol: MCP (Model Context Protocol)
+Data Source: pokemon-mcp-server → PokéAPI
+Type System: Custom TypeWheel (100% official Pokemon rules)
+```
+
+**Patrón Arquitectónico:**
+```
+Multi-Agent → Tool-Calling → Async Orchestration
+     ↓              ↓              ↓
+3 Specialized   2 Custom Tools   Parallel Execution
+   Agents      (Query + Battle)   with Timeout/Retry
+```
+
+**Data Flow:**
+```
+CLI → Orchestrator → [Scout-L, Scout-R] → MCP Server → PokéAPI
+                           ↕                    ↓
+                     JSON Pokemon Data    → Referee → TypeWheel → Winner
+```
 
 ## 🐛 Troubleshooting
 
