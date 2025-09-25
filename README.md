@@ -6,16 +6,15 @@ Un sistema multi-agente avanzado que utiliza **smolagents** y **Google Gemini** 
 
 ## 📚 Tabla de Contenido
 
-- [🏗️ Arquitectura del Sistema](#️-arquitectura-del-sistema)
+- [🏗️ Arquitectura del Sistema](#-arquitectura-del-sistema)
 - [🤖 Componentes del Sistema](#-componentes-del-sistema)
 - [🔄 Flujo de Ejecución](#-flujo-de-ejecución)
-- [🛠️ Instalación y Configuración](#️-instalación-y-configuración)
+- [🛠️ Instalación y Configuración](#-instalación-y-configuración)
 - [🎮 Uso](#-uso)
 - [📁 Estructura del Proyecto](#-estructura-del-proyecto)
 - [🔧 Arquitectura Técnica](#-arquitectura-técnica)
 - [🚀 Características Avanzadas](#-características-avanzadas)
 - [🐛 Troubleshooting](#-troubleshooting)
-- [📝 Notas de Desarrollo](#-notas-de-desarrollo)
 - [📄 Licencia](#-licencia)
 - [🙏 Agradecimientos](#-agradecimientos)
 
